@@ -53,3 +53,4 @@ dkms.conf
 
 smake
 build.smake
+a.out

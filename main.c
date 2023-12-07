@@ -5,6 +5,7 @@
 #include <unistd.h>
 #include <limits.h>
 #include <errno.h>
+#include <time.h>
 
 #define ANSI_COLOR_RED     "\x1b[31m"
 #define ANSI_COLOR_GREEN   "\x1b[32m"
@@ -211,6 +212,15 @@ void RunBuild(void){
 	if (getcwd(curpath, PATH_MAX) == NULL) HandleGetCWDError();
 	CombinePaths(buf, curpath, filename);
 	struct SMakeConfig *config = ParseSMakeConf(buf);
+	free(buf);
+	srand(time(NULL));
+	int random = rand();
+	char command_foldercreation[64] = {0};
+	char directory[32] = {0};
+	snprintf(directory, sizeof(directory), "/tmp/SMake-%d", random);
+	snprintf(command_foldercreation, sizeof(command_foldercreation), "mkdir %s", directory);
+	system(command_foldercreation);
+	
 }
 
 int main(int argc, char *argv[]){
