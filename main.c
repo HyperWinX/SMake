@@ -4,6 +4,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <limits.h>
+#include <errno.h>
 
 #define ANSI_COLOR_RED     "\x1b[31m"
 #define ANSI_COLOR_GREEN   "\x1b[32m"
@@ -14,6 +15,7 @@
 #define ANSI_COLOR_RESET   "\x1b[0m"
 
 enum ParseMode{
+	NULLVAL,
 	CURPARSE_COMPILER,
 	CURPARSE_FILES,
 	CURPARSE_COMPILERFLAGS,
@@ -26,7 +28,9 @@ enum Error{
 	NoSMakeFile,
 	UserDirRetrievalFailure,
 	NoConfigEntryName,
-	TooLongConfigEntryName
+	TooLongConfigEntryName,
+	UnknownConfigurationEntry,
+	UnknownCompiler
 };
 
 struct SMakeConfig{
@@ -56,13 +60,52 @@ void ErrExit(enum Error err){
 		case TooLongConfigEntryName:
 			printf(ANSI_COLOR_RED "Too long config entry name! May be caused by incorrect syntax. Cannot continue.\n");
 			exit(1);
+		case UnknownCompiler:
+			printf(ANSI_COLOR_RED "Unknown compiler!\n" ANSI_COLOR_RESET);
+			exit(1);
 	}
+}
+
+void PrintConfig(struct SMakeConfig *config){
+	printf("Compiler: %s\nFiles: %s\nCompiler flags: %s\nAssembler flags: %s\nLinker flags: %s\n",
+	config->compiler == 0 ? "gcc" : "g++",
+	config->files,
+	config->compilerflags,
+	config->assemblerflags,
+	config->linkerflags);
+}
+
+void HandleGetCWDError(void){
+	switch (errno){
+		case EACCES:
+			printf(ANSI_COLOR_RED "Permission denied!\n" ANSI_COLOR_RESET);
+			break;
+		case EFAULT:
+			printf(ANSI_COLOR_RED "Buf pointer points to a bad address!\n" ANSI_COLOR_RESET);
+			break;
+		case EINVAL:
+			printf(ANSI_COLOR_RED "Size argument is zero and buf is not a null pointer" ANSI_COLOR_RESET);
+			break;
+		case ENAMETOOLONG:
+			printf(ANSI_COLOR_RED "The size of null-terminated absolute pathname string exceeds %d bytes!\n", PATH_MAX, ANSI_COLOR_RESET);
+			break;
+		case ENOENT:
+			printf(ANSI_COLOR_RED "The current working directory is unlinked!\n" ANSI_COLOR_RESET);
+			break;
+		case ENOMEM:
+			printf(ANSI_COLOR_RED "Out of memory!\n" ANSI_COLOR_RESET);
+			break;
+		case ERANGE:
+			printf(ANSI_COLOR_RED "The size argument is less than the length of the absolute pathname of the working directory, including the terminating null byte!\n" ANSI_COLOR_RESET);	
+			break;
+	}
+	exit(1);
 }
 
 void CombinePaths(char* destination, const char* path1, const char* path2)
 {
     if(path1 == NULL && path2 == NULL) {
-        strcpy(destination, "");;
+        strcpy(destination, "");
     }
     else if(path2 == NULL || strlen(path2) == 0) {
         strcpy(destination, path1);
@@ -86,7 +129,7 @@ void CombinePaths(char* destination, const char* path1, const char* path2)
     }
 }
 
-void ParseSMakeConf(char *path){
+struct SMakeConfig *ParseSMakeConf(char *path){
 	FILE* fd;
 	if (!(fd = fopen(path, "r"))) ErrExit(NoSMakeFile);
 	fseek(fd, 0L, SEEK_END);
@@ -95,55 +138,79 @@ void ParseSMakeConf(char *path){
 	char buf[len];
 	fread(&buf, sizeof(char), len, fd);
 	fclose(fd);
-	struct SMakeConfig config = {0};
 	char compiler[4] = {0};
 	char *files = (char*)calloc(sizeof(char), 4096);
 	char *compilerflags = (char*)calloc(sizeof(char), 512);
 	char *assemblerflags = (char*)calloc(sizeof(char), 512);
 	char *linkerflags = (char*)calloc(sizeof(char), 512);
-	enum ParseMode currentmode = CURPARSE_COMPILER;
+	enum ParseMode currentmode = NULLVAL;
 	uint8_t parsing_str = 0;
 	char tmpbuf[33] = {0};
 	int16_t tmpbuf_offset = 0;
+	char *bufptr = (char*)&tmpbuf;
 	for (uint64_t i = 0; i < len; i++){
+		if (buf[i] == '\n') continue;
 		if (buf[i] != '=' && strlen(tmpbuf) == 32) ErrExit(TooLongConfigEntryName);
 		if (buf[i] == '='){
-			if (strlen(tmpbuf) == 0) ErrExit(NoConfigEntryName);
-			switch(currentmode){
-				case CURPARSE_COMPILER:
-					currentmode = CURPARSE_FILES;
-					break;
-				case CURPARSE_FILES:
-					currentmode = CURPARSE_COMPILERFLAGS;
-					break;
-				case CURPARSE_COMPILERFLAGS:
-					currentmode = CURPARSE_ASSEMBLERFLAGS;
-					break;
-				case CURPARSE_ASSEMBLERFLAGS:
-					currentmode = CURPARSE_LINKERFLAGS;
-					break;
-			}
+			if (strlen(bufptr) == 0) ErrExit(NoConfigEntryName);
+			if (strcmp(bufptr, "compiler") == 0) currentmode = CURPARSE_COMPILER;
+			else if (strcmp(bufptr, "files") == 0) currentmode = CURPARSE_FILES;
+			else if (strcmp(bufptr, "compilerflags") == 0) currentmode = CURPARSE_COMPILERFLAGS;
+			else if (strcmp(bufptr, "assemblerflags") == 0) currentmode = CURPARSE_ASSEMBLERFLAGS;
+			else if (strcmp(bufptr, "linkerflags") == 0) currentmode = CURPARSE_LINKERFLAGS;
+			else ErrExit(UnknownConfigurationEntry);
 			continue;
 		}
 		if (buf[i] == '"'){
-			
+			if (parsing_str == 0){
+				parsing_str = 1;
+				switch (currentmode){
+					case CURPARSE_COMPILER:
+						bufptr = (char*)&compiler;
+						break;
+					case CURPARSE_FILES:
+						bufptr = files;
+						break;
+					case CURPARSE_COMPILERFLAGS:
+						bufptr = compilerflags;
+						break;
+					case CURPARSE_ASSEMBLERFLAGS:
+						bufptr = assemblerflags;
+						break;
+					case CURPARSE_LINKERFLAGS:
+						bufptr = linkerflags;
+						break;
+				}
+			}
+			else if (parsing_str == 1){
+				parsing_str = 0;
+				currentmode = NULLVAL;
+				bufptr = (char*)&tmpbuf;
+				memset(bufptr, 0x00, sizeof(tmpbuf));
+			}
+			tmpbuf_offset = 0;
+			continue;
 		}
-		if (currentmode == CURPARSE_COMPILER){
-			if (buf[i] != '#') ErrExit(InvalidSOF);
-			if (buf[i] == '\n') currentmode = CURPARSE_FILES;
-		}
+		bufptr[tmpbuf_offset++] = buf[i];
 	}
+	struct SMakeConfig* config = calloc(sizeof(struct SMakeConfig), 1);
+	if (strcmp(compiler, "gcc") == 0) config->compiler = 0;
+	else if (strcmp(compiler, "g++") == 0) config->compiler = 1;
+	else ErrExit(UnknownCompiler);
+	config->files = files;
+	config->compilerflags = compilerflags;
+	config->assemblerflags = assemblerflags;
+	config->linkerflags = linkerflags;
+	return config;
 }
 
 void RunBuild(void){
 	char *buf = (char*)calloc(sizeof(char), PATH_MAX + 64);
 	char *curpath;
-	if (getcwd(curpath, sizeof(curpath)) == NULL){
-		printf(ANSI_COLOR_RED "Failed to retrieve current user directory!\n" ANSI_COLOR_RESET);
-		exit(1);
-	}
-	CombinePaths(curpath, buf, filename);
-	
+	errno = 0;
+	if (getcwd(curpath, PATH_MAX) == NULL) HandleGetCWDError();
+	CombinePaths(buf, curpath, filename);
+	struct SMakeConfig *config = ParseSMakeConf(buf);
 }
 
 int main(int argc, char *argv[]){
