@@ -76,6 +76,14 @@ void PrintConfig(struct SMakeConfig *config){
 	config->linkerflags);
 }
 
+void GetDirName(char* filepath){
+	char t[2];
+	t[0] = "/";
+	t[1] = '\0';
+	char *laststash = strrchr(filepath, (char*)&t);
+	if (laststash != NULL) *laststash = '\0';
+}
+
 void HandleGetCWDError(void){
 	switch (errno){
 		case EACCES:
@@ -140,7 +148,7 @@ struct SMakeConfig *ParseSMakeConf(char *path){
 	fread(&buf, sizeof(char), len, fd);
 	fclose(fd);
 	char compiler[4] = {0};
-	char *files = (char*)calloc(sizeof(char), 4096);
+	char *files = (char*)calloc(sizeof(char), 16384);
 	char *compilerflags = (char*)calloc(sizeof(char), 512);
 	char *assemblerflags = (char*)calloc(sizeof(char), 512);
 	char *linkerflags = (char*)calloc(sizeof(char), 512);
@@ -205,6 +213,13 @@ struct SMakeConfig *ParseSMakeConf(char *path){
 	return config;
 }
 
+void ProcessFile(struct SMakeConfig* config, char* filepath){
+	char tmp[1024];
+	memcpy((char*)&tmp, filepath, 1024);
+	GetDirName((char*)&tmp);
+	printf((char*)&tmp);
+}
+
 void RunBuild(void){
 	char *buf = (char*)calloc(sizeof(char), PATH_MAX + 64);
 	char *curpath;
@@ -220,7 +235,26 @@ void RunBuild(void){
 	snprintf(directory, sizeof(directory), "/tmp/SMake-%d", random);
 	snprintf(command_foldercreation, sizeof(command_foldercreation), "mkdir %s", directory);
 	system(command_foldercreation);
-	
+	char *filepath = (char*)calloc(sizeof(char), 2048);
+	char parsed_filename[1024] = {0};
+	uint16_t offset = 0;
+	PrintConfig(config);
+	for (uint64_t i = 0; i < strlen(config->files); i++){
+		if (config->files[i] == ' ' && config->files[i] == '\0'){
+			CombinePaths(filepath, directory, parsed_filename);			
+			ProcessFile(config, parsed_filename);
+			memset((char*)&parsed_filename, 0x00, sizeof(parsed_filename));
+			offset = 0;
+			continue;
+		}
+		parsed_filename[offset++] = config->files[i];
+	}
+	CombinePaths(filepath, directory, parsed_filename);			
+	ProcessFile(config, filepath);
+	memset((char*)&parsed_filename, 0x00, sizeof(parsed_filename));
+	char removecommand[32] = {0};
+	snprintf(removecommand, sizeof(removecommand), "rm -rf %s", directory);
+	system(removecommand);
 }
 
 int main(int argc, char *argv[]){
