@@ -2,4 +2,5 @@ all:
 	gcc -O2 -march=native main.c -o smake
 
 debug:
-	gcc -g main.c -o smake
+	gcc -O0 -g main.c -o smake
+	./smake

@@ -52,5 +52,7 @@ Mkfile.old
 dkms.conf
 
 smake
+smake_test
 build.smake
 a.out
+test.c
