@@ -38,13 +38,14 @@ enum Error{
 };
 
 struct SMakeConfig{
-	int8_t compiler;
-	int8_t afterbuildrun;
-	char* files;
-	char* compilerflags;
-	char* assemblerflags;
-	char* linkerflags;
-	char* output;
+        char target_name[64];
+        uint16_t lang;
+        char** dependencies;
+        char* files;
+        char** flags;
+        char* output;
+        char** precompile_steps;
+        char** postcompile_steps;
 };
 
 char *filename = "build.smake";
@@ -158,71 +159,12 @@ struct SMakeConfig *ParseSMakeConf(char *path){
 	char buf[len];
 	fread(&buf, sizeof(char), len, fd);
 	fclose(fd);
-	char compiler[4] = {0};
-	char run[2] = {0};
-	char *files = (char*)calloc(sizeof(char), 16384);
-	char *compilerflags = (char*)calloc(sizeof(char), 512);
-	char *assemblerflags = (char*)calloc(sizeof(char), 512);
-	char *linkerflags = (char*)calloc(sizeof(char), 512);
-	char *output = (char*)calloc(sizeof(char), 128);
 	enum ParseMode currentmode = NULLVAL;
 	uint8_t parsing_str = 0;
 	char tmpbuf[33] = {0};
 	uint64_t tmpbuf_offset = 0;
 	char *bufptr = (char*)&tmpbuf;
-	for (uint64_t i = 0; i < len; i++){
-		if (buf[i] == '\n') continue;
-		if (buf[i] != '=' && strlen(tmpbuf) == 32) ErrExit(TooLongConfigEntryName);
-		if (buf[i] == '='){
-			if (strlen(bufptr) == 0) ErrExit(NoConfigEntryName);
-			if (strcmp(bufptr, "compiler") == 0) currentmode = CURPARSE_COMPILER;
-			else if (strcmp(bufptr, "files") == 0) currentmode = CURPARSE_FILES;
-			else if (strcmp(bufptr, "compilerflags") == 0) currentmode = CURPARSE_COMPILERFLAGS;
-			else if (strcmp(bufptr, "assemblerflags") == 0) currentmode = CURPARSE_ASSEMBLERFLAGS;
-			else if (strcmp(bufptr, "linkerflags") == 0) currentmode = CURPARSE_LINKERFLAGS;
-			else if (strcmp(bufptr, "run") == 0) currentmode = CURPARSE_RUN;
-			else if (strcmp(bufptr, "output") == 0) currentmode = CURPARSE_OUTPUT;
-			else ErrExit(UnknownConfigurationEntry);
-			continue;
-		}
-		if (buf[i] == '"'){
-			if (parsing_str == 0){
-				parsing_str = 1;
-				switch (currentmode){
-					case CURPARSE_COMPILER:
-						bufptr = (char*)&compiler;
-						break;
-					case CURPARSE_FILES:
-						bufptr = files;
-						break;
-					case CURPARSE_COMPILERFLAGS:
-						bufptr = compilerflags;
-						break;
-					case CURPARSE_ASSEMBLERFLAGS:
-						bufptr = assemblerflags;
-						break;
-					case CURPARSE_LINKERFLAGS:
-						bufptr = linkerflags;
-						break;
-					case CURPARSE_RUN:
-						bufptr = (char*)&run;
-						break;
-					case CURPARSE_OUTPUT:
-						bufptr = output;
-						break;
-				}
-			}
-			else if (parsing_str == 1){
-				parsing_str = 0;
-				currentmode = NULLVAL;
-				bufptr = (char*)&tmpbuf;
-				memset(bufptr, 0x00, sizeof(tmpbuf));
-			}
-			tmpbuf_offset = 0;
-			continue;
-		}
-		bufptr[tmpbuf_offset++] = buf[i];
-	}
+	
 	struct SMakeConfig* config = calloc(sizeof(struct SMakeConfig), 1);
 	if (strcmp(compiler, "gcc") == 0) config->compiler = 0;
 	else if (strcmp(compiler, "g++") == 0) config->compiler = 1;
