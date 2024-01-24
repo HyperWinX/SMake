@@ -1,0 +1,5 @@
+cmake_minimum_required(VERSION 3.5)
+project(SMake CXX)
+add_executable(smake main.cpp parser.cpp fileops.cpp)
+set(CMAKE_CXX_FLAGS "-g -O0")
+#add_custom_command(TARGET smake POST_BUILD COMMAND gdb smake)
