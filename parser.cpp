@@ -26,7 +26,13 @@ std::vector<token> ParseFileContents(smake_file& file){
 		}
 		buf[bufptr++] = *file.contents;
 		printf("[1] Consumed char %c, current offset: %d\n", buf[bufptr - 1], bufptr - 1);
+		printf("[1] Char is (: %s\n", *(file.contents - 1) == ')' ? "true" : "false");
 	} while (*(++file.contents));
+	if (*(--file.contents) == ')'){
+		GenerateToken(buf, tok);
+		tokens.push_back(tok);
+		buf[0] = '\0';
+	}
 	file.contents = baseptr;
 	printf("%zu\n", tokens.size());
 	return tokens;
@@ -48,6 +54,7 @@ err GenerateToken(char (&buf)[1024], token& tok){
 	ptr++;
 
 	if(!strcmp(paramname, "add_exec")) tok.parameter = ADD_EXEC;
+	if(!strcmp(paramname, "set")) tok.parameter = SET;
 
 	while (buf[ptr] != ')'){
 		if (valptr == 1024)
